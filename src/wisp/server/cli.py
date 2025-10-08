@@ -4,6 +4,13 @@ import pathlib
 import sys
 import logging
 import multiprocessing
+import threading
+
+try:
+  import concurrent.interpreters
+  has_subinterpreters = True
+except ImportError:
+  has_subinterpreters = False
 
 try:
   import uvloop
@@ -26,13 +33,40 @@ def run_async(func, *args, **kwargs):
     elif event_loop == "winloop":
       winloop.run(func(*args, **kwargs))
     else:
-      logging.error("Failed to import uvloop or winloop. Falling back to asyncio, which is slower.")
       asyncio.run(func(*args, **kwargs))
   except KeyboardInterrupt:
     pass
 
 def run_http(args):
   run_async(http.main, args)
+
+def run_processes(thread_count, args):
+  processes = []
+  for i in range(0, int(thread_count)):
+    process = multiprocessing.Process(target=run_http, args=(args,), daemon=True)
+    processes.append(process)
+    process.start()
+  try:
+    for process in processes:
+      process.join()
+  except KeyboardInterrupt:
+    pass
+
+def run_subinterpreters(thread_count, args):
+  def thread_func():
+    interpreter = concurrent.interpreters.create()
+    interpreter.call(run_http, args)
+    
+  threads = []
+  for i in range(0, int(thread_count)):
+    thread = threading.Thread(target=thread_func, daemon=True)
+    threads.append(thread)
+    thread.start()
+  try:
+    for thread in threads:
+      thread.join()
+  except KeyboardInterrupt:
+    pass
 
 def main():
   parser = argparse.ArgumentParser(
@@ -72,22 +106,19 @@ def main():
     logging.info(f"proxy enabled: {args.proxy}")
   logging.info(f"listening on {args.host}:{args.port}")
 
+  if event_loop == "asyncio":
+    logging.error("failed to import uvloop or winloop. falling back to asyncio, which is slower.")
+
   threads = int(args.threads)
   if net.reuse_port_supported():
     if threads == 0:
       threads = multiprocessing.cpu_count()
     logging.info(f"running using {threads} threads")
-
-    processes = []
-    for i in range(0, int(threads)):
-      process = multiprocessing.Process(target=run_http, args=(args,), daemon=True)
-      processes.append(process)
-      process.start()
-    try:
-      for process in processes:
-        process.join()
-    except KeyboardInterrupt:
-      pass
+    
+    if has_subinterpreters:
+      run_subinterpreters(threads, args);
+    else:
+      run_processes(threads, args)
   
   else:
     if threads != 0:
