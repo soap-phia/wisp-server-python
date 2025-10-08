@@ -7,9 +7,13 @@ import multiprocessing
 
 try:
   import uvloop
-  use_uvloop = True
+  event_loop = "uvloop"
 except ImportError:
-  use_uvloop = False
+  try:
+    import winloop
+    event_loop = "winloop"
+  except ImportError:
+    event_loop = "asyncio"
 
 import wisp
 from wisp.server import http 
@@ -17,12 +21,12 @@ from wisp.server import net
 
 def run_async(func, *args, **kwargs):
   try:
-    if use_uvloop:
+    if event_loop == "uvloop":
       uvloop.run(func(*args, **kwargs))
+    elif event_loop == "winloop":
+      winloop.run(func(*args, **kwargs))
     else:
-      #uvloop doesn't support windows at all so we don't need to print the error
-      if not sys.platform in ("win32", "cygwin"):
-        logging.error("Importing uvloop failed. Falling back to asyncio, which is slower.")
+      logging.error("Failed to import uvloop or winloop. Falling back to asyncio, which is slower.")
       asyncio.run(func(*args, **kwargs))
   except KeyboardInterrupt:
     pass
