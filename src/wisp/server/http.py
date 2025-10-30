@@ -3,6 +3,7 @@ import pathlib
 import mimetypes
 import logging
 import random
+import textwrap
 
 from websockets.server import serve
 
@@ -10,6 +11,57 @@ import wisp
 from wisp.server import connection
 from wisp.server import ratelimit
 from wisp.server import net
+
+static_path = None
+default_html = f"""
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width">
+    <title>wisp-server-python v{wisp.version}</title>
+    <style>
+      html {{
+        color-scheme: light dark;
+      }}
+      h1, p {{
+        font-family: sans-serif;
+      }}
+      body {{
+        max-width: 600px;
+        margin-left: auto;
+        margin-right: auto;
+      }}
+      pre {{
+        white-space: pre-wrap
+      }}
+    </style>
+  </head>
+  <body>
+    <h1>wisp-server-python</h1>
+    <p>This is a <a href="https://github.com/MercuryWorkshop/wisp-protocol">Wisp protocol</a> server running
+     <a href="https://github.com/MercuryWorkshop/wisp-server-python">wisp-server-python</a> v{wisp.version}.</p>
+    <p>This program is licensed under the <a href="https://github.com/MercuryWorkshop/wisp-server-python/blob/main/LICENSE">GNU AGPL v3</a>.</p>
+    <pre>
+wisp-server-python: a Wisp server implementation written in Python
+Copyright (C) 2025 Mercury Workshop
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program.  If not, see &lt;https://www.gnu.org/licenses/&gt;.
+</pre>
+  </body>
+</html>
+""".strip()
 
 async def connection_handler(websocket, path):
   client_ip = websocket.remote_address[0]
@@ -37,9 +89,14 @@ async def connection_handler(websocket, path):
     tcp_handler = asyncio.create_task(wsproxy_conn.handle_tcp())
     await asyncio.gather(ws_handler, tcp_handler)
 
-async def static_handler(path, request_headers):
+async def request_handler(path, request_headers):
   if "Upgrade" in request_headers:
     return
+  if not static_path:
+    if path.endswith("/") or path.endswith("/index.html"):
+      return 200, [("Content-Type", "text/html")], default_html.encode()
+    else:
+      return 404, [], "404 not found".encode()
     
   response_headers = []
   target_path = static_path / path[1:]
@@ -62,10 +119,7 @@ async def main(args):
 
   if args.static:
     static_path = pathlib.Path(args.static).resolve()
-    request_handler = static_handler
     mimetypes.init()
-  else:
-    request_handler = None
   
   if args.limits:
     ratelimit.enabled = True

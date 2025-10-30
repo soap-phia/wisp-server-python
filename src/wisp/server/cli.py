@@ -5,6 +5,7 @@ import sys
 import logging
 import multiprocessing
 import threading
+import platform
 
 try:
   import concurrent.interpreters
@@ -104,6 +105,7 @@ def main():
     logging.info("enabled rate limits")
   if args.proxy:
     logging.info(f"proxy enabled: {args.proxy}")
+  logging.info(f"running on {platform.python_implementation()} {platform.python_version()}")
   logging.info(f"listening on {args.host}:{args.port}")
 
   if event_loop == "asyncio":
